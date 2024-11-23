@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using RedisCaching.Interfaces;
 using RedisCaching.Models;
 using RedisCaching.Redis;
+using StackExchange.Redis;
 
 namespace RedisCaching.Controllers
 {
@@ -29,21 +30,57 @@ namespace RedisCaching.Controllers
         [HttpGet]
         public async Task<IActionResult> AllCars()
         {
-            var instanceId = GetInstanceId();
-            var cacheKey = $"Cars_cache_{instanceId}";
-            bool isFromCache = false;
+            try
+            {
+                var instanceId = GetInstanceId();
+                var cacheKey = $"Cars_cache_{instanceId}";
+                bool isFromCache = false;
 
-            var cars = cacheService.GetcachedData<List<Cars>>(cacheKey);
-            if(cars is null || cars.Count() < 1)
-            {
-                cars = await services.GetAllCars();
-                cacheService.SetCachedData(cacheKey, cars, TimeSpan.FromMinutes(3));
-                isFromCache = false;
-            } else
-            {
-                isFromCache = true;
+                var cars = cacheService.GetcachedData<List<Cars>>(cacheKey);
+                if(cars is null || cars.Count() < 1)
+                {
+                    cars = await services.GetAllCars();
+                    cacheService.SetCachedData(cacheKey, cars, TimeSpan.FromMinutes(3));
+                    isFromCache = false;
+                } else
+                {
+                    isFromCache = true;
+                }
+                return Ok(new {Cars = cars, isFromCache = isFromCache});
             }
-            return Ok(new {Cars = cars, isFromCache = isFromCache});
+            catch(RedisException ex)
+            {
+                var cars = await services.GetAllCars();
+                return Ok(new { Cars = cars, isFromCache = false });
+            }
+        }
+
+        [HttpGet("by_id")]
+        public async Task<IActionResult> GetCarById(int id)
+        {
+            try
+            {
+                var cacheKey = $"Car_cache_{id}";
+                bool isFromCache = false;
+
+                var car = cacheService.GetcachedData<Cars>(cacheKey);
+                if (car == null)
+                {
+                    car = await services.GetById(id);
+                    cacheService.SetCachedData(cacheKey, car, TimeSpan.FromMinutes(3));
+                    isFromCache = false;
+                }
+                else
+                {
+                    isFromCache = true;
+                }
+                return Ok(new { car = car, isFromCache = isFromCache });
+            }
+            catch (RedisException ex)
+            {
+                var car = await services.GetById(id);
+                return Ok(new { car = car, isFromCache = false });
+            }
         }
 
         private string GetInstanceId()
